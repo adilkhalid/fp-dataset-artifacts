@@ -41,9 +41,17 @@ def main():
         # Remove invalid labels (-1) from SNLI
         snli = snli.filter(lambda ex: ex['label'] != -1)
 
-        # Merge training and validation splits
-        train_dataset = datasets.concatenate_datasets([snli["train"], anli["train"]])
-        eval_dataset = datasets.concatenate_datasets([snli["validation"], anli["validation"]])
+        # Concatenate ANLI rounds
+        anli_train = datasets.concatenate_datasets(
+            [anli["train_r1"], anli["train_r2"], anli["train_r3"]]
+        )
+        anli_validation = datasets.concatenate_datasets(
+            [anli["dev_r1"], anli["dev_r2"], anli["dev_r3"]]
+        )
+
+        # Merge SNLI and ANLI datasets
+        train_dataset = datasets.concatenate_datasets([snli["train"], anli_train])
+        eval_dataset = datasets.concatenate_datasets([snli["validation"], anli_validation])
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else default_datasets[args.task]
