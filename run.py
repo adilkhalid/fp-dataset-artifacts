@@ -28,8 +28,9 @@ def main():
     # --output_dir <path>
     #     Where to put the trained model checkpoint(s) and any eval predictions.
     #     *This argument is required*.
-    argp.add_argument('--use_anli', action='store_true',
-                      help="Use the ANLI dataset for adversarial NLI training.")
+    argp.add_argument('--include_anli', type=str, default=None,
+                      help="""Comma-separated list of ANLI phases to include, e.g., '1', '2', '3' for R1, R2, and R3.
+                      If not provided, only the SNLI dataset will be used.""")
 
     argp.add_argument('--model', type=str,
                       default='google/electra-small-discriminator',
@@ -66,27 +67,42 @@ def main():
         # from the loaded dataset
         eval_split = 'train'
     else:
-        if args.task == 'nli' and args.dataset == "anli":
-            print("Loading ANLI dataset...")
-            # Load ANLI dataset (all rounds)
-            anli = datasets.load_dataset("anli")
-            # Concatenate all rounds of ANLI (R1, R2, R3)
-            anli_combined = datasets.concatenate_datasets(
-                [anli['train_r1'], anli['train_r2'], anli['train_r3']]
-            )
-            # Load SNLI dataset
-            snli = datasets.load_dataset("snli")
-            # Combine ANLI and SNLI into a single dataset
-            dataset = datasets.concatenate_datasets([anli_combined, snli['train']])
-        else:
-            default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
-            dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
-                default_datasets[args.task]
-            # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
-            eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
-            # Load the raw data
-            dataset = datasets.load_dataset(*dataset_id)
+        default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
+        dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else default_datasets[args.task]
 
+        # Load the raw SNLI dataset
+        dataset = datasets.load_dataset(*dataset_id)
+
+        # Filter out examples with no label for SNLI
+        if dataset_id == ('snli',):
+            # Remove SNLI examples with no label
+            if isinstance(dataset, datasets.DatasetDict):
+                dataset['train'] = dataset['train'].filter(lambda ex: ex['label'] != -1)
+                dataset['validation'] = dataset['validation'].filter(lambda ex: ex['label'] != -1)
+            else:
+                dataset = dataset.filter(lambda ex: ex['label'] != -1)
+
+        # Include ANLI data (15% of SNLI by default)
+        if args.task == 'nli':  # Ensure this applies only to NLI tasks
+            # Load ANLI datasets for R1, R2, R3
+            anli_splits = ['train_r1', 'train_r2', 'train_r3']
+            anli_datasets = [datasets.load_dataset('anli', split=split) for split in anli_splits]
+
+            # Combine all ANLI datasets into one
+            combined_anli = datasets.concatenate_datasets(anli_datasets)
+
+            # Calculate 15% of the SNLI training size
+            snli_train_size = len(dataset['train'])
+            anli_sample_size = int(0.15 * snli_train_size)
+
+            # Shuffle and sample 15% from ANLI
+            sampled_anli = combined_anli.shuffle(seed=42).select(range(anli_sample_size))
+
+            # Combine SNLI and sampled ANLI for training
+            dataset['train'] = datasets.concatenate_datasets([dataset['train'], sampled_anli])
+
+        # Ensure correct validation split for datasets like MNLI
+        eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
 
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
