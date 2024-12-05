@@ -96,6 +96,9 @@ def main():
             snli_train_size = len(dataset['train'])
             anli_sample_size = int(0.50 * snli_train_size)
 
+            max_anli_size = len(combined_anli)
+            anli_sample_size = min(anli_sample_size, max_anli_size)
+
             # Shuffle and sample 15% from ANLI
             sampled_anli = combined_anli.shuffle(seed=42).select(range(anli_sample_size))
 
