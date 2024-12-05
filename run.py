@@ -31,7 +31,8 @@ def main():
     argp.add_argument('--include_anli', type=str, default=None,
                       help="""Comma-separated list of ANLI phases to include, e.g., '1', '2', '3' for R1, R2, and R3.
                       If not provided, only the SNLI dataset will be used.""")
-
+    argp.add_argument('--anli_phase', type=str, default=None,
+                      help="Specify the ANLI phase to use for evaluation (e.g., 'r1', 'r2', 'r3'). If not provided, default dataset is used.")
     argp.add_argument('--model', type=str,
                       default='google/electra-small-discriminator',
                       help="""This argument specifies the base model to fine-tune.
@@ -151,16 +152,25 @@ def main():
             remove_columns=train_dataset.column_names
         )
     if training_args.do_eval:
-        eval_dataset = dataset[eval_split]
-        if args.max_eval_samples:
-            eval_dataset = eval_dataset.select(range(args.max_eval_samples))
-        eval_dataset_featurized = eval_dataset.map(
-            prepare_eval_dataset,
-            batched=True,
-            num_proc=NUM_PREPROCESSING_WORKERS,
-            remove_columns=eval_dataset.column_names
-        )
-
+        if args.anli_phase:
+            # Load the specified ANLI phase for evaluation
+            anli_eval_split = f"dev_{args.anli_phase}"
+            eval_dataset = datasets.load_dataset("anli", split=anli_eval_split)
+            eval_dataset_featurized = eval_dataset.map(
+                prepare_eval_dataset,
+                batched=True,
+                num_proc=NUM_PREPROCESSING_WORKERS,
+                remove_columns=eval_dataset.column_names
+            )
+        else:
+            # Use the default evaluation dataset
+            eval_dataset = dataset[eval_split]
+            eval_dataset_featurized = eval_dataset.map(
+                prepare_eval_dataset,
+                batched=True,
+                num_proc=NUM_PREPROCESSING_WORKERS,
+                remove_columns=eval_dataset.column_names
+            )
     # Select the training configuration
     trainer_class = Trainer
     eval_kwargs = {}
