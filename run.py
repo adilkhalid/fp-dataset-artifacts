@@ -94,7 +94,7 @@ def main():
 
             # Calculate 15% of the SNLI training size
             snli_train_size = len(dataset['train'])
-            anli_sample_size = int(0.15 * snli_train_size)
+            anli_sample_size = int(0.50 * snli_train_size)
 
             # Shuffle and sample 15% from ANLI
             sampled_anli = combined_anli.shuffle(seed=42).select(range(anli_sample_size))
